@@ -1,0 +1,51 @@
+import numpy as np
+
+class Factor():
+
+    def __init__(self, ambito: set):
+        self.ambito = ambito
+        self.tabla = dict()
+   
+
+    def crear_llave(self, llaves, var: Variable, var_por_tratar):
+    
+        if  var.cardinalidad == len(llaves):
+            return
+
+        # TODO
+
+    def iniciar_tabla(self, ambito, var_por_tratar):
+
+        llaves = list()
+
+        for i in ambito:
+            llaves.append(crear_llave(self, llaves[i], var, var_por_tratar))
+
+        # TODO
+        
+
+        
+
+        
+        
+            
+
+
+
+    def marginalizacion(self, var: Variable):
+        # sumo todos los valores de la variable
+        pass
+
+    def producto(self, factor: Factor):
+        self.ambito.union(factor.ambito)
+
+
+class Variable():
+
+    def __init__(self, valores: list):
+        self.variable : str
+        self.valores = valores
+        self.cardinalidad : int = len(valores)
+
+        
+
