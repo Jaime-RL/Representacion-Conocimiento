@@ -16,7 +16,7 @@ class Factor():
 
     def iniciar_tabla(self, ambito, var_por_tratar):
 
-        llaves = list()
+        llaves = list()¨
 
         for i in ambito:
             llaves.append(crear_llave(self, llaves[i], var, var_por_tratar))
