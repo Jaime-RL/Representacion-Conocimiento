@@ -82,8 +82,10 @@ def eliminar_nodos_hoja(grafo, x, y, z):
 
     # Conjunto plano de nodos "protegidos": no se pueden borrar aunque
     # sean hoja, porque forman parte de lo que se está estudiando.
-    # x, y, z ya son listas de nodos sueltos, así que basta concatenarlas.
-    nodos_estudio = x + y + z
+    # Se usa un set (y no una lista) porque la comprobación `nodo in
+    # nodos_estudio` del bucle pasa a costar O(1) en lugar de
+    # O(|X ∪ Y ∪ Z|), lo que simplifica el cálculo del coste temporal.
+    nodos_estudio = set(x) | set(y) | set(z)
 
     for nodo in nodos_postorden:
         es_hoja = len(list(grafo.successors(nodo))) == 0
@@ -91,56 +93,52 @@ def eliminar_nodos_hoja(grafo, x, y, z):
             grafo.remove_node(nodo)
 
 
-def conectar_padres_nodo(grafo, padres_nodo):
+def conectar_padres_nodo(grafo_moral, padres_nodo):
     """
     Añade una arista entre cada PAR de padres de un mismo nodo
     ("casar" a los padres). Si un nodo tiene padres [p1, p2, p3], se
-    añaden las aristas (p1,p2), (p1,p3) y (p2,p3).
+    añaden las aristas p1-p2, p1-p3 y p2-p3.
+
+    `grafo_moral` es el grafo NO dirigido de salida, nunca el dirigido
+    original: así las aristas añadidas no pueden confundirse después con
+    relaciones padre -> hijo.
     """
     num_padres = len(padres_nodo)
 
     for i in range(num_padres):
         for j in range(i + 1, num_padres):
-            padre1 = padres_nodo[i]
-            padre2 = padres_nodo[j]
-            grafo.add_edge(padre1, padre2)
+            grafo_moral.add_edge(padres_nodo[i], padres_nodo[j])
 
-    return grafo
-
-
-def grafo_sin_direcciones(grafo):
-    """
-    Convierte el grafo dirigido en "no dirigido": por cada arista
-    (origen -> destino) que exista, añade también la arista inversa
-    (destino -> origen), de forma que moverse en successors() funcione
-    en ambos sentidos.
-    """
-    # Primero se copian las aristas actuales a una lista aparte, porque
-    # no conviene modificar el grafo (añadir aristas) mientras se está
-    # iterando sobre él.
-    aristas_originales = []
-    for nodo in list(grafo):
-        for hijo in grafo.successors(nodo):
-            aristas_originales.append((nodo, hijo))
-
-    for origen, destino in aristas_originales:
-        grafo.add_edge(destino, origen)
-
-    return grafo
+    return grafo_moral
 
 
 def unir_padres_con_hijos_comunes_sin_direccion(grafo):
     """
-    PASO 2 del algoritmo: por cada nodo con dos o más padres, los conecta
-    entre sí (moralización), y después quita la dirección de todas las
-    aristas del grafo.
+    PASO 2 del algoritmo (moralización): construye un grafo NUEVO no
+    dirigido que contiene
+      - todas las aristas del grafo original, sin dirección, y
+      - una arista entre cada par de padres que comparten un hijo.
+
+    Por qué un grafo nuevo: en la versión anterior se añadía la arista
+    dirigida padre1 -> padre2 sobre el MISMO grafo que se estaba
+    recorriendo. Eso convertía a padre1 en un "padre" falso de padre2, y
+    si padre2 se procesaba después, se casaban nodos que no compartían
+    ningún hijo real (el resultado dependía del orden de los nodos).
+    Separando entrada (dirigido, solo se lee) y salida (no dirigido, solo
+    se escribe), `predecessors()` siempre devuelve los padres originales.
     """
-    for nodo in list(grafo):
+    grafo_moral = nx.Graph()
+    # Se añaden también los nodos, no solo las aristas, para no perder
+    # nodos aislados (por ejemplo, un nodo de X sin aristas).
+    grafo_moral.add_nodes_from(grafo.nodes)
+    grafo_moral.add_edges_from(grafo.edges)  # en nx.Graph pierden la dirección
+
+    for nodo in grafo:
         padres_nodo = list(grafo.predecessors(nodo))
         if len(padres_nodo) >= 2:
-            conectar_padres_nodo(grafo, padres_nodo)
+            conectar_padres_nodo(grafo_moral, padres_nodo)
 
-    return grafo_sin_direcciones(grafo)
+    return grafo_moral
 
 
 def eliminar_nodos_z(grafo, z):
@@ -177,7 +175,9 @@ def hay_camino(grafo, x, y):
 
         visitados.add(nodo_a_analizar)
 
-        for conexion in grafo.successors(nodo_a_analizar):
+        # El grafo ya es no dirigido (nx.Graph), que no tiene
+        # successors(): sus vecinos se obtienen con neighbors().
+        for conexion in grafo.neighbors(nodo_a_analizar):
             analizar.append(conexion)
 
     return False
@@ -190,10 +190,12 @@ def comprobar_camino(grafo, x, y, z):
     están d-separados dado Z), o False si no queda ninguno (X ⊥ Y | Z).
     """
     eliminar_nodos_hoja(grafo, x, y, z)
-    unir_padres_con_hijos_comunes_sin_direccion(grafo)
-    grafo = eliminar_nodos_z(grafo, z)
+    # El paso 2 devuelve un grafo NUEVO, así que hay que recoger el
+    # valor de retorno; el dirigido ya no se usa a partir de aquí.
+    grafo_moral = unir_padres_con_hijos_comunes_sin_direccion(grafo)
+    grafo_moral = eliminar_nodos_z(grafo_moral, z)
 
-    return hay_camino(grafo, x, y)
+    return hay_camino(grafo_moral, x, y)
 
 
 if __name__ == "__main__":
