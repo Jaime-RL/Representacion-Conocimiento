@@ -1,32 +1,57 @@
 import numpy as np
 
+tipo_llave = tuple[str, ...]
 class Factor():
 
     def __init__(self, ambito: set):
         self.ambito = ambito
-        self.tabla = dict()
+        self.tabla: dict[tipo_llave, float] = dict()
    
 
-    def crear_llave(self, llaves, var: Variable, var_por_tratar):
-    
-        if  var.cardinalidad == len(llaves):
+    def crear_llaves(self): 
+        # Aquí preparamos una lista vacía donde guardaremos todas las combinaciones.
+        llaves = []
+
+        # Convertimos las variables del factor en una lista para poder recorrerlas.
+        variables = list(self.ambito)
+
+        # Empezamos a construir cada combinación desde la primera variable.
+        self.crear_llaves_recursivo(variables, 0, [], llaves)
+        return llaves
+        
+
+    def crear_llaves_recursivo(self, variables, posicion, llave, llaves):
+        # Si ya hemos usado todas las variables, la combinación está terminada.
+        if posicion == len(variables):
+            # Las tuplas sirven como claves del diccionario de la tabla.
+            llaves.append(tuple(llave))
             return
 
-        # TODO
+        # Elegimos la variable que toca en este paso.
+        var = variables[posicion]
 
-    def iniciar_tabla(self, ambito, var_por_tratar):
+        # Probamos todos los valores posibles de esa variable.
+        for i in range(var.cardinalidad):
+            # Creamos una copia de la combinación y añadimos el valor actual.
+            nueva_llave = llave + [var.nombre + "_" + str(i)]
 
-        llaves = list()¨
+            # Repetimos el proceso con la siguiente variable.
+            self.crear_llaves_recursivo(
+                variables, posicion + 1, nueva_llave, llaves
+            )
 
-        for i in ambito:
-            llaves.append(crear_llave(self, llaves[i], var, var_por_tratar))
 
-        # TODO
-        
+    def iniciar_tabla(self):
 
-        
+        llaves = self.crear_llaves
 
-        
+        for llave in llaves:
+            self.tabla[llave] = 0.0
+
+        return
+
+    def completar_tabla(self):
+        pass
         
             
 
@@ -43,9 +68,11 @@ class Factor():
 class Variable():
 
     def __init__(self, valores: list):
-        self.variable : str
+        self.nombre : str
         self.valores = valores
         self.cardinalidad : int = len(valores)
+
+    
 
         
 
