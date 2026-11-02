@@ -1,11 +1,20 @@
 import numpy as np
 
-tipo_llave = tuple[str, ...]
+
+
+class Variable():
+
+    def __init__(self, nombre: str, valores: list):
+        self.nombre : str = nombre
+        self.valores = valores
+        self.cardinalidad : int = len(valores)
+
+    
 class Factor():
 
     def __init__(self, ambito: set):
-        self.ambito = ambito
-        self.tabla: dict[tipo_llave, float] = dict()
+        self.ambito = sorted(ambito, key=lambda v: v.nombre)
+        self.tabla: dict[tuple[str, ...], float] = dict()
    
 
     def crear_llaves(self): 
@@ -36,43 +45,134 @@ class Factor():
             nueva_llave = llave + [var.nombre + "_" + str(i)]
 
             # Repetimos el proceso con la siguiente variable.
-            self.crear_llaves_recursivo(
-                variables, posicion + 1, nueva_llave, llaves
-            )
+            self.crear_llaves_recursivo(variables, posicion + 1, nueva_llave, llaves)
 
 
     def iniciar_tabla(self):
 
-        llaves = self.crear_llaves
+        llaves = self.crear_llaves()
 
         for llave in llaves:
             self.tabla[llave] = 0.0
 
         return
 
-    def completar_tabla(self):
-        pass
-        
+    def completar_tabla(self, valores):
+        """Completa la tabla con un diccionario o con una lista ordenada."""
+        self.iniciar_tabla()
+        if isinstance(valores, dict):
+            self.tabla.update(valores)
+        else:
+            llaves = list(self.tabla)
+            if len(llaves) != len(valores):
+                raise ValueError("El número de valores no coincide con la tabla")
+            self.tabla.update(zip(llaves, valores))
+
+
+
+def producto(factor1: "Factor", factor2: "Factor") -> "Factor":
+    # El constructor ordena el ámbito por nombre, así que las llaves del factor nuevo siguen ese orden
+    factor_nuevo = Factor(set(factor1.ambito) | set(factor2.ambito))
+
+    # Posiciones de las variables de cada factor dentro de las llaves del factor nuevo
+    pos1 = [i for i, v in enumerate(factor_nuevo.ambito) if v in factor1.ambito]
+    pos2 = [i for i, v in enumerate(factor_nuevo.ambito) if v in factor2.ambito]
+
+    factor_nuevo.iniciar_tabla()
+
+    for llave in factor_nuevo.tabla.keys():
+        # Restringir la llave completa al ámbito de cada factor
+        llave1 = tuple(llave[i] for i in pos1)
+        llave2 = tuple(llave[i] for i in pos2)
+
+        factor_nuevo.tabla[llave] = factor1.tabla[llave1] * factor2.tabla[llave2]
+
+    return factor_nuevo
             
 
 
+def marginalizacion(var: Variable, factor_viejo: "Factor") -> "Factor":
+    # Nuevo ámbito: el del original sin la variable a marginalizar
+    factor_nuevo = Factor(set(factor_viejo.ambito) - {var})
 
-    def marginalizacion(self, var: Variable):
-        # sumo todos los valores de la variable
-        pass
+    # Posiciones (en las llaves del original) de las variables que se quedan
+    posiciones_variables_nuevas = [i for i, v in enumerate(factor_viejo.ambito) if v not in {var}]
 
-    def producto(self, factor: Factor):
-        self.ambito.union(factor.ambito)
+    # Todas las llaves del nuevo factor a 0.0, para poder acumular sobre ellas
+    factor_nuevo.iniciar_tabla()
+
+    for llave in factor_viejo.tabla.keys():
+        # Quitar de la llave el valor de la variable marginalizada
+        llave_nueva = tuple(llave[i] for i in posiciones_variables_nuevas)
+        # Varias llaves originales caen en la misma llave nueva: se suman
+        factor_nuevo.tabla[llave_nueva] += factor_viejo.tabla[llave]
+
+    return factor_nuevo
 
 
-class Variable():
+def eliminar_variables(factores: list[Factor], orden: list[Variable]) -> list[Factor]:
+    """Eliminación de variables sobre una lista de factores."""
+    factores = list(factores)
+    for var in orden:
+        relacionados = [f for f in factores if var in f.ambito]
+        if not relacionados:
+            continue
 
-    def __init__(self, valores: list):
-        self.nombre : str
-        self.valores = valores
-        self.cardinalidad : int = len(valores)
+        restantes = [f for f in factores if f not in relacionados]
+        combinado = relacionados[0]
+        for factor in relacionados[1:]:
+            combinado = producto(combinado, factor)
+        restantes.append(marginalizacion(var, combinado))
+        factores = restantes
+    return factores
 
-    
 
-        
+def ejemplo_2_2() -> Factor:
+    """Construye la RB del ejemplo y devuelve el factor final P(B)."""
+    a = Variable("A", [0, 1, 2])
+    b = Variable("B", [0, 1])
+    c = Variable("C", [0, 1, 2])
+    d = Variable("D", [0, 1])
+    e = Variable("E", [0, 1])
 
+    # P(D), P(E) y P(B | A)
+    f_d = Factor({d})
+    f_d.completar_tabla([0.6, 0.4])
+    f_e = Factor({e})
+    f_e.completar_tabla([0.8, 0.2])
+
+    f_b_a = Factor({a, b})
+    f_b_a.completar_tabla({
+        ("A_0", "B_0"): 0.7, ("A_0", "B_1"): 0.3,
+        ("A_1", "B_0"): 0.4, ("A_1", "B_1"): 0.6,
+        ("A_2", "B_0"): 0.1, ("A_2", "B_1"): 0.9,
+    })
+
+    # P(A | D, E), con las filas (D,E) del enunciado.
+    f_a_de = Factor({a, d, e})
+    f_a_de.completar_tabla({
+        ("A_0", "D_0", "E_0"): 0.3, ("A_1", "D_0", "E_0"): 0.4, ("A_2", "D_0", "E_0"): 0.3,
+        ("A_0", "D_0", "E_1"): 0.1, ("A_1", "D_0", "E_1"): 0.2, ("A_2", "D_0", "E_1"): 0.7,
+        ("A_0", "D_1", "E_0"): 0.7, ("A_1", "D_1", "E_0"): 0.2, ("A_2", "D_1", "E_0"): 0.1,
+        ("A_0", "D_1", "E_1"): 0.2, ("A_1", "D_1", "E_1"): 0.3, ("A_2", "D_1", "E_1"): 0.5,
+    })
+
+    # P(C | E)
+    f_c_e = Factor({c, e})
+    f_c_e.completar_tabla({
+        ("C_0", "E_0"): 0.6, ("C_1", "E_0"): 0.3, ("C_2", "E_0"): 0.1,
+        ("C_0", "E_1"): 0.3, ("C_1", "E_1"): 0.4, ("C_2", "E_1"): 0.3,
+    })
+
+    factores = eliminar_variables(
+        [f_d, f_e, f_a_de, f_b_a, f_c_e], [c, e, d, a]
+    )
+    resultado = factores[0]
+    total = sum(resultado.tabla.values())
+    if total:
+        resultado.tabla = {llave: valor / total for llave, valor in resultado.tabla.items()}
+    return resultado
+
+
+if __name__ == "__main__":
+    print(ejemplo_2_2().tabla)  # {('B_0',): 0.4288, ('B_1',): 0.5712}
